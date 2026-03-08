@@ -38,7 +38,6 @@ ApiVersion = Literal["v1", "v3"]
 Provider = Literal["openai", "anthropic"]
 
 
-_ENC = tiktoken.get_encoding("cl100k_base")
 _DEFAULT_INPUT_MAX_CHARS = 200_000
 _MAX_RETRIES = 5
 _RETRY_BASE_S = 2.0
@@ -50,21 +49,31 @@ _LONGBENCH_ZIP_SHA256 = (
 )
 
 _T = TypeVar("_T")
+_ENC: tiktoken.Encoding | None = None
+
+
+def _enc() -> tiktoken.Encoding:
+    """Lazy-load the tiktoken encoding (avoids a network download at import time)."""
+    global _ENC
+    if _ENC is None:
+        _ENC = tiktoken.get_encoding("cl100k_base")
+    return _ENC
 
 
 def _token_len(text: str) -> int:
-    return len(_ENC.encode(text))
+    return len(_enc().encode(text))
 
 
 def _truncate_middle_to_tokens(text: str, max_tokens: int) -> str:
     """Truncate by preserving head+tail (Lost-in-the-Middle style)."""
     max_tokens = max(1, max_tokens)
-    toks = _ENC.encode(text)
+    enc = _enc()
+    toks = enc.encode(text)
     if len(toks) <= max_tokens:
         return text
     head = max_tokens // 2
     tail = max_tokens - head
-    return cast(str, _ENC.decode(toks[:head] + toks[-tail:]))
+    return cast(str, enc.decode(toks[:head] + toks[-tail:]))
 
 
 def _env(name: str) -> str:
@@ -228,38 +237,35 @@ def _compress_api(
         "User-Agent": "co-longbench-bench/0.1",
     }
 
-    def _do() -> tuple[str, list[str], int]:
-        t0 = time.monotonic()
-        with httpx.Client(timeout=120.0) as client:
-            r = client.post(api_url, headers=headers, json=payload)
+    t0 = time.monotonic()
+    with httpx.Client(timeout=120.0) as client:
+        r = client.post(api_url, headers=headers, json=payload)
+        try:
+            r.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text
             try:
-                r.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                body = exc.response.text
-                try:
-                    j = exc.response.json()
-                    if isinstance(j, dict):
-                        body = json.dumps(j, ensure_ascii=False)
-                except Exception:
-                    pass
-                raise httpx.HTTPStatusError(
-                    f"{exc} (response_body={body[:1000]!r})",
-                    request=exc.request,
-                    response=exc.response,
-                ) from exc
-            data = r.json()
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        if api_version == "v1":
-            chunks: list[str] = data.get("selected_chunks", [])
-            if not isinstance(chunks, list):
-                chunks = []
-            optimized_text = "\n\n".join(chunks)
-        else:
-            optimized_text = str(data["optimized_text"])
+                j = exc.response.json()
+                if isinstance(j, dict):
+                    body = json.dumps(j, ensure_ascii=False)
+            except Exception:
+                pass
+            raise httpx.HTTPStatusError(
+                f"{exc} (response_body={body[:1000]!r})",
+                request=exc.request,
+                response=exc.response,
+            ) from exc
+        data = r.json()
+    latency_ms = int((time.monotonic() - t0) * 1000)
+    if api_version == "v1":
+        chunks: list[str] = data.get("selected_chunks", [])
+        if not isinstance(chunks, list):
             chunks = []
-        return optimized_text, chunks, latency_ms
-
-    return _retry_on_transient(_do)
+        optimized_text = "\n\n".join(chunks)
+    else:
+        optimized_text = str(data["optimized_text"])
+        chunks = []
+    return optimized_text, chunks, latency_ms
 
 
 def _load_prompt_configs(config_dir: Path) -> tuple[dict[str, str], dict[str, int]]:

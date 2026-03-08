@@ -84,13 +84,14 @@ def parse_run_name(name: str) -> dict[str, str] | None:
         return None
     try:
         level_frac = float(level_str.replace("L", "").replace("_", "."))
-    except ValueError:
+        level_pct = int(level_frac * 100)
+    except (ValueError, OverflowError):
         return None
     return {
         "provider": parts[1],
         "model": parts[2],
         "mode": parts[3],
-        "level_pct": str(int(level_frac * 100)),
+        "level_pct": str(level_pct),
     }
 
 
