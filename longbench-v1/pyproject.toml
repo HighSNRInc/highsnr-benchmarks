@@ -1,0 +1,12 @@
+[project]
+name = "highsnr-longbench-v1"
+version = "0.1.0"
+description = "LongBench v1 benchmark for the HighSNR Context Optimizer API"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "tiktoken>=0.7",
+    "jieba>=0.42",
+    "fuzzywuzzy>=0.18",
+    "rouge>=1.0",
+]
