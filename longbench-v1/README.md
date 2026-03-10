@@ -1,7 +1,7 @@
 # LongBench v1 — HighSNR Context Optimizer
 
-Benchmark evaluating the [HighSNR Context Optimizer](https://high-snr.com) API against
-[LongBench v1](https://github.com/THUDM/LongBench) QA tasks.
+Benchmark evaluating the [HighSNR Context Optimizer](https://www.high-snr.com/#api) API against
+[LongBench v1](https://github.com/THUDM/LongBench/tree/main/LongBench) QA tasks.
 
 The optimizer compresses long documents to a token budget before passing them to a
 downstream LLM. We measure whether answer quality is preserved after compression.
@@ -33,7 +33,7 @@ F1 on dense scientific QA.
 ### Actual compression ratios
 
 The optimizer works at chunk boundaries, so the actual token ratio is slightly above the
-requested budget level.
+requested budget level. Ratios are averaged across both `api_generic` and `api_biased` runs.
 
 | Target | HotpotQA actual (mean) | Qasper actual (mean) |
 |--------|------------------------|----------------------|
@@ -47,7 +47,6 @@ requested budget level.
 | Mode | Description |
 |---|---|
 | `full` | Full document, no compression (baseline) |
-| `trunc` | Middle-truncation to the same token budget (naive baseline) |
 | `api_generic` | HighSNR `/v1/optimize`, no `context_hint` |
 | `api_biased` | HighSNR `/v1/optimize` with `context_hint` set to the question |
 
@@ -92,7 +91,6 @@ uv run python longbench_v1_run.py \
   --samples 200 \
   --modes api_generic api_biased \
   --levels 0.5 0.6 0.7 0.8 \
-  --co-api-version v1 \
   --dump-api-output \
   --providers openai
 
@@ -157,7 +155,41 @@ Each results directory contains:
 - `{dataset}.api_dump.jsonl` — per-sample API call details: input/output token counts,
   latency, selected chunks, context hint used
 
+### Output schema: `{dataset}.jsonl`
+
+| Field | Type | Description |
+|---|---|---|
+| `_id` | string | Sample ID from LongBench |
+| `dataset` | string | Sub-dataset name (e.g. `hotpotqa`) |
+| `mode` | string | `full`, `api_generic`, or `api_biased` |
+| `level` | float | Compression target as fraction of original tokens (e.g. `0.5` = 50%) |
+| `pred` | string | LLM-generated answer |
+| `answers` | list[str] | Ground-truth answer(s); F1 = max over all |
+| `all_classes` | list[str] \| null | Classification labels (null for QA datasets) |
+| `length` | int | Original context length in **characters** (from LongBench metadata) |
+
+### Output schema: `{dataset}.api_dump.jsonl`
+
+| Field | Type | Description |
+|---|---|---|
+| `_id` | string | Sample ID from LongBench |
+| `dataset` | string | Sub-dataset name |
+| `mode` | string | Compression mode used |
+| `level` | float | Compression target fraction |
+| `provider` | string | LLM provider (`openai` or `anthropic`) |
+| `llm_model` | string | LLM model name (e.g. `gpt-4o`) |
+| `api_called` | bool | Whether the optimizer API was called (`false` for `full`) |
+| `api_version` | string | Optimizer API version (`v1`) |
+| `api_input_tokens` | int | Original context token count (tiktoken `cl100k_base`) |
+| `budget_tokens` | int | Target token budget: `floor(api_input_tokens × level)` |
+| `used_context_tokens` | int | Actual tokens in optimized context (may exceed budget due to chunk boundaries) |
+| `prompt_tokens` | int | Total tokens in the final prompt sent to the LLM (context + question + template) |
+| `api_latency_ms` | int \| null | Optimizer API wall-clock latency; null if API not called |
+| `llm_latency_ms` | int | LLM inference wall-clock latency |
+| `context_hint` | string \| null | Question passed as hint (`api_biased` only; null otherwise) |
+| `selected_chunks` | list[str] | Text chunks selected by the v1 API (empty list for non-API modes) |
+
 ## Attribution
 
 Evaluation metrics and prompt templates are from
-[THUDM/LongBench](https://github.com/THUDM/LongBench), MIT license.
+[THUDM/LongBench](https://github.com/THUDM/LongBench/tree/main/LongBench), MIT license.

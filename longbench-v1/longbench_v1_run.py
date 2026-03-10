@@ -34,7 +34,7 @@ import tiktoken
 
 
 Mode = Literal["full", "trunc", "api_generic", "api_biased"]
-ApiVersion = Literal["v1", "v3"]
+
 Provider = Literal["openai", "anthropic"]
 
 
@@ -192,7 +192,6 @@ def _call_llm(cfg: LlmConfig, prompt: str) -> tuple[str, int]:
 
 def _compress_api(
     *,
-    api_version: ApiVersion,
     api_url: str,
     api_key: str,
     context: str,
@@ -200,30 +199,17 @@ def _compress_api(
     context_hint: str | None,
 ) -> tuple[str, list[str], int]:
     """
-    Call the Context Optimizer API and return (optimized_text, selected_chunks, latency_ms).
+    Call the Context Optimizer v1 API and return (optimized_text, selected_chunks, latency_ms).
 
     selected_chunks is the list of text chunks the optimizer selected, in order.
-    For v1 the optimized_text is the chunks joined with double newlines.
+    The optimized_text is the chunks joined with double newlines.
     """
-    if api_version == "v1":
-        payload: dict[str, Any] = {
-            "document": context,
-            "max_output_tokens": max(1, int(max_output_tokens)),
-            "include_boundaries": True,
-            "return_discarded_chunks": False,
-        }
-    else:
-        payload = {
-            "document": context,
-            "max_output_tokens": max(1, int(max_output_tokens)),
-            "document_type": "unstructured",
-            "output_format": "text",
-            "include_boundaries": False,
-            "return_metadata": False,
-            "return_indices": False,
-            "return_discarded_chunks": False,
-            "return_scores": False,
-        }
+    payload: dict[str, Any] = {
+        "document": context,
+        "max_output_tokens": max(1, int(max_output_tokens)),
+        "include_boundaries": True,
+        "return_discarded_chunks": False,
+    }
     if context_hint is not None:
         payload["context_hint"] = context_hint
 
@@ -257,14 +243,10 @@ def _compress_api(
             ) from exc
         data = r.json()
     latency_ms = int((time.monotonic() - t0) * 1000)
-    if api_version == "v1":
-        chunks: list[str] = data.get("selected_chunks", [])
-        if not isinstance(chunks, list):
-            chunks = []
-        optimized_text = "\n\n".join(chunks)
-    else:
-        optimized_text = str(data["optimized_text"])
+    chunks: list[str] = data.get("selected_chunks", [])
+    if not isinstance(chunks, list):
         chunks = []
+    optimized_text = "\n\n".join(chunks)
     return optimized_text, chunks, latency_ms
 
 
@@ -466,25 +448,13 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--co-api-version",
-        type=str,
-        choices=["v1", "v3"],
-        default="v1",
-        help="Context Optimizer API version.",
-    )
-    parser.add_argument(
         "--dump-api-output",
         action="store_true",
         help="Write per-sample API debug JSONL alongside predictions.",
     )
     args = parser.parse_args()
 
-    default_co_url = (
-        "https://api.high-snr.com/v1/optimize"
-        if args.co_api_version == "v1"
-        else "https://api.high-snr.com/v3/optimize"
-    )
-    co_url = os.getenv("CO_API_URL", default_co_url)
+    co_url = os.getenv("CO_API_URL", "https://api.high-snr.com/v1/optimize")
     co_key = _env("CO_API_KEY")
 
     data_cache_dir = Path(
@@ -606,7 +576,6 @@ def main() -> None:
                                     used_context, selected_chunks, api_latency_ms = (
                                         _retry_on_transient(
                                             _compress_api,
-                                            api_version=args.co_api_version,
                                             api_url=co_url,
                                             api_key=co_key,
                                             context=context,
@@ -651,7 +620,7 @@ def main() -> None:
                                     "provider": llm.provider,
                                     "llm_model": llm.model,
                                     "api_called": api_called,
-                                    "api_version": args.co_api_version,
+                                    "api_version": "v1",
                                     "api_input_tokens": original_tokens,
                                     "budget_tokens": budget,
                                     "used_context_tokens": used_context_tokens,
