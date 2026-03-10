@@ -1,6 +1,6 @@
 # highsnr-benchmarks
 
-Benchmarks for the [HighSNR Context Optimizer]((https://www.high-snr.com/#api)) API.
+Benchmarks for the [HighSNR Context Optimizer](https://www.high-snr.com/#api) API.
 
 Each benchmark is a self-contained directory with its own scripts, dependencies,
 pre-computed results, and reproduction instructions.
