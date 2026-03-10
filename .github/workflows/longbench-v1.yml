@@ -1,0 +1,37 @@
+name: longbench-v1
+
+on:
+  push:
+    paths:
+      - "longbench-v1/**"
+      - ".github/workflows/longbench-v1.yml"
+  pull_request:
+    paths:
+      - "longbench-v1/**"
+      - ".github/workflows/longbench-v1.yml"
+
+jobs:
+  eval:
+    name: Evaluate pre-computed results
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: longbench-v1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run evaluator against pre-computed results
+        run: |
+          uv run --with jieba --with fuzzywuzzy --with rouge \
+            python eval_longbench.py --prefix co_v1_validate
+
+      - name: Smoke-test inference script (--help only, no API keys needed)
+        run: uv run python longbench_v1_run.py --help
