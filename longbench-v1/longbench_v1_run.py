@@ -119,7 +119,7 @@ def _retry_on_transient(fn: Callable[..., _T], *args: object, **kwargs: object) 
 
 def _call_openai(
     *, api_key: str, model: str, prompt: str, max_tokens: int
-) -> tuple[str, int]:
+) -> str:
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {api_key}"}
     payload = {
@@ -129,21 +129,19 @@ def _call_openai(
         "max_tokens": max_tokens,
     }
 
-    def _do() -> tuple[str, int]:
-        t0 = time.monotonic()
+    def _do() -> str:
         with httpx.Client(timeout=60.0) as client:
             r = client.post(url, headers=headers, json=payload)
             r.raise_for_status()
             data = r.json()
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        return data["choices"][0]["message"]["content"], latency_ms
+        return data["choices"][0]["message"]["content"]
 
     return _retry_on_transient(_do)
 
 
 def _call_anthropic(
     *, api_key: str, model: str, prompt: str, max_tokens: int
-) -> tuple[str, int]:
+) -> str:
     url = "https://api.anthropic.com/v1/messages"
     headers = {
         "x-api-key": api_key,
@@ -157,8 +155,7 @@ def _call_anthropic(
         "messages": [{"role": "user", "content": prompt}],
     }
 
-    def _do() -> tuple[str, int]:
-        t0 = time.monotonic()
+    def _do() -> str:
         with httpx.Client(timeout=60.0) as client:
             r = client.post(url, headers=headers, json=payload)
             r.raise_for_status()
@@ -168,13 +165,12 @@ def _call_anthropic(
             for block in data.get("content", [])
             if block.get("type") == "text"
         ]
-        latency_ms = int((time.monotonic() - t0) * 1000)
-        return "".join(parts).strip(), latency_ms
+        return "".join(parts).strip()
 
     return _retry_on_transient(_do)
 
 
-def _call_llm(cfg: LlmConfig, prompt: str) -> tuple[str, int]:
+def _call_llm(cfg: LlmConfig, prompt: str) -> str:
     if cfg.provider == "openai":
         return _call_openai(
             api_key=_env("OPENAI_API_KEY"),
@@ -197,9 +193,9 @@ def _compress_api(
     context: str,
     max_output_tokens: int,
     context_hint: str | None,
-) -> tuple[str, list[str], int]:
+) -> tuple[str, list[str]]:
     """
-    Call the Context Optimizer v1 API and return (optimized_text, selected_chunks, latency_ms).
+    Call the Context Optimizer v1 API and return (optimized_text, selected_chunks).
 
     selected_chunks is the list of text chunks the optimizer selected, in order.
     The optimized_text is the chunks joined with double newlines.
@@ -208,7 +204,6 @@ def _compress_api(
         "document": context,
         "max_output_tokens": max(1, int(max_output_tokens)),
         "include_boundaries": True,
-        "return_discarded_chunks": False,
     }
     if context_hint is not None:
         payload["context_hint"] = context_hint
@@ -223,7 +218,6 @@ def _compress_api(
         "User-Agent": "co-longbench-bench/0.1",
     }
 
-    t0 = time.monotonic()
     with httpx.Client(timeout=120.0) as client:
         r = client.post(api_url, headers=headers, json=payload)
         try:
@@ -242,12 +236,11 @@ def _compress_api(
                 response=exc.response,
             ) from exc
         data = r.json()
-    latency_ms = int((time.monotonic() - t0) * 1000)
     chunks: list[str] = data.get("selected_chunks", [])
     if not isinstance(chunks, list):
         chunks = []
     optimized_text = "\n\n".join(chunks)
-    return optimized_text, chunks, latency_ms
+    return optimized_text, chunks
 
 
 def _load_prompt_configs(config_dir: Path) -> tuple[dict[str, str], dict[str, int]]:
@@ -410,7 +403,7 @@ def main() -> None:
         "--levels",
         nargs="+",
         type=float,
-        default=[1.0, 0.8, 0.7, 0.6, 0.5],
+        default=[1.0, 0.9, 0.8, 0.7, 0.6, 0.5],
     )
     parser.add_argument(
         "--modes",
@@ -556,7 +549,6 @@ def main() -> None:
                             budget = max(1, int(original_tokens * float(level)))
                             total_considered += 1
                             selected_chunks: list[str] = []
-                            api_latency_ms: int | None = None
                             api_called = False
                             hint: str | None = None
 
@@ -573,7 +565,7 @@ def main() -> None:
                                     hint = raw_hint if raw_hint.strip() else None
                                 try:
                                     api_called = True
-                                    used_context, selected_chunks, api_latency_ms = (
+                                    used_context, selected_chunks = (
                                         _retry_on_transient(
                                             _compress_api,
                                             api_url=co_url,
@@ -595,7 +587,7 @@ def main() -> None:
                                 dataset_name=dataset_name,
                                 dataset2prompt=dataset2prompt,
                             )
-                            pred, llm_latency_ms = _call_llm(llm_cfg, prompt)
+                            pred = _call_llm(llm_cfg, prompt)
                             used_context_tokens = _token_len(used_context)
                             prompt_tokens = _token_len(prompt)
 
@@ -625,8 +617,6 @@ def main() -> None:
                                     "budget_tokens": budget,
                                     "used_context_tokens": used_context_tokens,
                                     "prompt_tokens": prompt_tokens,
-                                    "api_latency_ms": api_latency_ms,
-                                    "llm_latency_ms": llm_latency_ms,
                                     "context_hint": hint,
                                     "selected_chunks": selected_chunks,
                                 }
