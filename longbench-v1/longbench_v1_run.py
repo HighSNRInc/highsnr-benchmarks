@@ -403,7 +403,7 @@ def main() -> None:
         "--levels",
         nargs="+",
         type=float,
-        default=[1.0, 0.8, 0.7, 0.6, 0.5],
+        default=[1.0, 0.9, 0.8, 0.7, 0.6, 0.5],
     )
     parser.add_argument(
         "--modes",
