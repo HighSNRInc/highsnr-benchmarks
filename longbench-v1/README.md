@@ -190,9 +190,6 @@ Each results directory contains:
 | `context_hint` | string \| null | Question passed as hint (`api_biased` only; null otherwise) |
 | `selected_chunks` | list[str] | Text chunks selected by the v1 API (empty list for non-API modes) |
 
-> **Schema change (rerun):** `api_latency_ms` and `llm_latency_ms` fields were removed.
-> Earlier dumps may still contain them; new runs will not.
-
 ## Attribution
 
 Evaluation metrics and prompt templates are from
