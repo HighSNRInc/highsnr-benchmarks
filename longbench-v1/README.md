@@ -12,35 +12,36 @@ All runs: GPT-4o as the downstream LLM, 200 samples per dataset, seed=42.
 
 ### HotpotQA — QA F1 (multi-document QA)
 
-| Config                  |   50% |   60% |   70% |   80% | 100% (full) |
-|-------------------------|------:|------:|------:|------:|------------:|
-| generic (no hint)       | 65.29 | 66.34 | 68.08 | 70.70 |       69.71 |
-| biased (with hint)      | 67.28 | 68.02 | 69.95 | 70.96 |       69.71 |
+| Config                  |   50% |   60% |   70% |   80% |   90% | 100% (full) |
+|-------------------------|------:|------:|------:|------:|------:|------------:|
+| generic (no hint)       | 63.78 | 66.56 | 65.88 | 66.15 | 69.52 |       69.71 |
+| biased (with hint)      | 68.22 | 67.61 | 67.95 | 68.48 | 71.57 |       69.71 |
 
-At **70% budget with query-aware compression**, the optimizer matches full-document F1.
-At 80%, it slightly exceeds it — the optimizer filters noise that hurts the LLM.
+At **90% budget with query-aware compression**, the optimizer exceeds full-document F1.
+Even at 50% budget, biased mode retains 97.9% of full-document performance.
 
 ### Qasper — QA F1 (single-document QA, scientific papers)
 
-| Config                  |   50% |   60% |   70% |   80% | 100% (full) |
-|-------------------------|------:|------:|------:|------:|------------:|
-| generic (no hint)       | 35.51 | 38.16 | 41.36 | 45.37 |       47.22 |
-| biased (with hint)      | 39.87 | 40.76 | 42.97 | 45.21 |       47.22 |
+| Config                  |   50% |   60% |   70% |   80% |   90% | 100% (full) |
+|-------------------------|------:|------:|------:|------:|------:|------------:|
+| generic (no hint)       | 35.35 | 37.00 | 39.50 | 42.23 | 44.87 |       47.22 |
+| biased (with hint)      | 41.27 | 42.66 | 44.04 | 44.59 | 46.25 |       47.22 |
 
-At **80% budget with query-aware compression**, the optimizer retains 95.7% of full-document
+At **90% budget with query-aware compression**, the optimizer retains 97.9% of full-document
 F1 on dense scientific QA.
 
 ### Actual compression ratios
 
-The optimizer works at chunk boundaries, so the actual token ratio is slightly above the
-requested budget level. Ratios are averaged across both `api_generic` and `api_biased` runs.
+The optimizer respects the requested budget level closely.
+Ratios are averaged across both `api_generic` and `api_biased` runs.
 
 | Target | HotpotQA actual (mean) | Qasper actual (mean) |
 |--------|------------------------|----------------------|
-| 50%    | 55.9%                  | 54.7%                |
-| 60%    | 67.9%                  | 66.4%                |
-| 70%    | 79.8%                  | 78.0%                |
-| 80%    | 91.4%                  | 89.9%                |
+| 50%    | 49.8%                  | 50.2%                |
+| 60%    | 59.7%                  | 60.1%                |
+| 70%    | 69.7%                  | 70.2%                |
+| 80%    | 79.6%                  | 80.1%                |
+| 90%    | 89.4%                  | 90.0%                |
 
 ### Modes
 
@@ -90,7 +91,7 @@ uv run python longbench_v1_run.py \
   --datasets qasper hotpotqa \
   --samples 200 \
   --modes api_generic api_biased \
-  --levels 0.5 0.6 0.7 0.8 \
+  --levels 0.5 0.6 0.7 0.8 0.9 \
   --dump-api-output \
   --providers openai
 
@@ -144,16 +145,18 @@ longbench-v1/
     ├── co_v1_validate__openai__gpt-4o__api_generic__L0_6/
     ├── co_v1_validate__openai__gpt-4o__api_generic__L0_7/
     ├── co_v1_validate__openai__gpt-4o__api_generic__L0_8/
+    ├── co_v1_validate__openai__gpt-4o__api_generic__L0_9/
     ├── co_v1_validate__openai__gpt-4o__api_biased__L0_5/
     ├── co_v1_validate__openai__gpt-4o__api_biased__L0_6/
     ├── co_v1_validate__openai__gpt-4o__api_biased__L0_7/
-    └── co_v1_validate__openai__gpt-4o__api_biased__L0_8/
+    ├── co_v1_validate__openai__gpt-4o__api_biased__L0_8/
+    └── co_v1_validate__openai__gpt-4o__api_biased__L0_9/
 ```
 
 Each results directory contains:
 - `{dataset}.jsonl` — predictions (compatible with the official LongBench evaluator)
 - `{dataset}.api_dump.jsonl` — per-sample API call details: input/output token counts,
-  latency, selected chunks, context hint used
+  selected chunks, context hint used
 
 ### Output schema: `{dataset}.jsonl`
 
@@ -184,8 +187,6 @@ Each results directory contains:
 | `budget_tokens` | int | Target token budget: `floor(api_input_tokens × level)` |
 | `used_context_tokens` | int | Actual tokens in optimized context (may exceed budget due to chunk boundaries) |
 | `prompt_tokens` | int | Total tokens in the final prompt sent to the LLM (context + question + template) |
-| `api_latency_ms` | int \| null | Optimizer API wall-clock latency; null if API not called |
-| `llm_latency_ms` | int | LLM inference wall-clock latency |
 | `context_hint` | string \| null | Question passed as hint (`api_biased` only; null otherwise) |
 | `selected_chunks` | list[str] | Text chunks selected by the v1 API (empty list for non-API modes) |
 
