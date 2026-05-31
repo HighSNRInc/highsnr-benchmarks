@@ -38,7 +38,7 @@ Biased mode at **50% budget scores 48.98 — 97% of full-document F1** using hal
 | `full` | Full document, no compression (baseline) |
 | `api_generic` | HighSNR `/v2/optimize`, no `context_hint` |
 | `api_biased` | HighSNR `/v2/optimize` with `context_hint` set to the question |
-| `random` | Random chunk selection at the same token budget (baseline) |
+| `random` | Random chunk selection at the same token budget (pre-computed baseline; not reproducible via `longbench_v1_run.py`) |
 
 ## Reproduce
 
@@ -73,6 +73,10 @@ uv run python longbench_v1_run.py \
 ```
 
 ### 4. Full run (reproduce published results)
+
+The published results used Claude Sonnet 4.5 via AWS Bedrock. Running via
+the direct Anthropic API with the same model will produce comparable scores.
+The `random` baseline is pre-computed only and cannot be reproduced via this script.
 
 ```bash
 uv run python longbench_v1_run.py \
@@ -111,7 +115,7 @@ re-running inference.
 - **Budget**: `int(orig_tokens × level)` tokens, computed with tiktoken `cl100k_base`.
 - **Skipped**: samples whose raw context exceeds 200,000 characters (service input limit).
   No input truncation is applied — samples either fit or are skipped.
-- **Downstream LLM**: Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) via AWS Bedrock,
+- **Downstream LLM**: Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`),
   `temperature=0`, `max_tokens` per LongBench config.
 - **Metric**: token-level F1 from the official LongBench v1 evaluation code.
 - **`context_hint`** (biased mode): the question string, truncated to 2,000 characters.

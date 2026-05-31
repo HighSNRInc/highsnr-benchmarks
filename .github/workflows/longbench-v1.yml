@@ -31,7 +31,7 @@ jobs:
       - name: Run evaluator against pre-computed results
         run: |
           uv run --with jieba --with fuzzywuzzy --with rouge \
-            python eval_longbench.py --prefix co_v1_validate
+            python eval_longbench.py --prefix co_sonnet
 
       - name: Smoke-test inference script (--help only, no API keys needed)
         run: uv run python longbench_v1_run.py --help
