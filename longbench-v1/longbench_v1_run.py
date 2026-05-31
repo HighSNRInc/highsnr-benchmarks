@@ -447,7 +447,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    co_url = os.getenv("CO_API_URL", "https://api.high-snr.com/v1/optimize")
+    co_url = os.getenv("CO_API_URL", "https://api.high-snr.com/v2/optimize")
     co_key = _env("CO_API_KEY")
 
     data_cache_dir = Path(
