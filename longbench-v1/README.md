@@ -8,48 +8,37 @@ downstream LLM. We measure whether answer quality is preserved after compression
 
 ## Results
 
-All runs: GPT-4o as the downstream LLM, 200 samples per dataset, seed=42.
+Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) via AWS Bedrock · 200 samples per dataset · seed=42
 
 ### HotpotQA — QA F1 (multi-document QA)
 
-| Config                  |   50% |   60% |   70% |   80% |   90% | 100% (full) |
-|-------------------------|------:|------:|------:|------:|------:|------------:|
-| generic (no hint)       | 63.78 | 66.56 | 65.88 | 66.15 | 69.52 |       69.71 |
-| biased (with hint)      | 68.22 | 67.61 | 67.95 | 68.48 | 71.57 |       69.71 |
+| Config                  |   10% |   20% |   30% |   40% |   50% |   60% | 100% (full) |
+|-------------------------|------:|------:|------:|------:|------:|------:|------------:|
+| generic (no hint)       | 42.09 | 52.85 | 60.23 | 63.12 | 64.08 | 64.26 |       66.26 |
+| biased (with hint)      | 58.21 | 64.88 | 65.00 | 67.49 | 67.53 | 69.10 |       66.26 |
+| random                  | 34.72 | 44.68 | 51.12 | 55.53 | 58.16 | 58.22 |       66.26 |
 
-At **90% budget with query-aware compression**, the optimizer exceeds full-document F1.
-Even at 50% budget, biased mode retains 97.9% of full-document performance.
+At **50–60% budget with query-aware compression**, the optimizer matches or exceeds
+full-document F1. Biased mode at 60% scores 69.10 — above the 66.26 full-document baseline.
 
 ### Qasper — QA F1 (single-document QA, scientific papers)
 
-| Config                  |   50% |   60% |   70% |   80% |   90% | 100% (full) |
-|-------------------------|------:|------:|------:|------:|------:|------------:|
-| generic (no hint)       | 35.35 | 37.00 | 39.50 | 42.23 | 44.87 |       47.22 |
-| biased (with hint)      | 41.27 | 42.66 | 44.04 | 44.59 | 46.25 |       47.22 |
+| Config                  |   10% |   20% |   30% |   40% |   50% |   60% | 100% (full) |
+|-------------------------|------:|------:|------:|------:|------:|------:|------------:|
+| generic (no hint)       | 23.70 | 31.85 | 35.27 | 40.96 | 42.10 | 44.22 |       50.69 |
+| biased (with hint)      | 37.08 | 44.86 | 46.84 | 48.82 | 48.98 | 48.41 |       50.69 |
+| random                  | 22.84 | 32.62 | 36.70 | 37.88 | 38.04 | 41.14 |       50.69 |
 
-At **90% budget with query-aware compression**, the optimizer retains 97.9% of full-document
-F1 on dense scientific QA.
-
-### Actual compression ratios
-
-The optimizer respects the requested budget level closely.
-Ratios are averaged across both `api_generic` and `api_biased` runs.
-
-| Target | HotpotQA actual (mean) | Qasper actual (mean) |
-|--------|------------------------|----------------------|
-| 50%    | 49.8%                  | 50.2%                |
-| 60%    | 59.7%                  | 60.1%                |
-| 70%    | 69.7%                  | 70.2%                |
-| 80%    | 79.6%                  | 80.1%                |
-| 90%    | 89.4%                  | 90.0%                |
+Biased mode at **50% budget scores 48.98 — 97% of full-document F1** using half the tokens.
 
 ### Modes
 
 | Mode | Description |
 |---|---|
 | `full` | Full document, no compression (baseline) |
-| `api_generic` | HighSNR `/v1/optimize`, no `context_hint` |
-| `api_biased` | HighSNR `/v1/optimize` with `context_hint` set to the question |
+| `api_generic` | HighSNR `/v2/optimize`, no `context_hint` |
+| `api_biased` | HighSNR `/v2/optimize` with `context_hint` set to the question |
+| `random` | Random chunk selection at the same token budget (baseline) |
 
 ## Reproduce
 
@@ -65,10 +54,10 @@ uv sync
 
 ```bash
 export CO_API_KEY="your-highsnr-api-key"   # https://console.high-snr.com
-export OPENAI_API_KEY="..."
-export OPENAI_MODEL="gpt-4o"
+export ANTHROPIC_API_KEY="..."
+export ANTHROPIC_MODEL="claude-sonnet-4-5-20250929"
 
-# Optional — defaults to https://api.high-snr.com/v1/optimize
+# Optional — defaults to https://api.high-snr.com/v2/optimize
 # export CO_API_URL="..."
 ```
 
@@ -78,31 +67,30 @@ export OPENAI_MODEL="gpt-4o"
 uv run python longbench_v1_run.py \
   --datasets qasper hotpotqa \
   --samples 3 \
-  --levels 0.7 \
+  --levels 0.5 \
   --modes full api_generic api_biased \
-  --providers openai
+  --providers anthropic
 ```
 
 ### 4. Full run (reproduce published results)
 
 ```bash
 uv run python longbench_v1_run.py \
-  --run-name-prefix co_v1_validate \
+  --run-name-prefix co_sonnet \
   --datasets qasper hotpotqa \
   --samples 200 \
   --modes api_generic api_biased \
-  --levels 0.5 0.6 0.7 0.8 0.9 \
-  --dump-api-output \
-  --providers openai
+  --levels 0.1 0.2 0.3 0.4 0.5 0.6 \
+  --providers anthropic
 
 # Full-doc baseline (level 1.0, mode full)
 uv run python longbench_v1_run.py \
-  --run-name-prefix co_v1_validate \
+  --run-name-prefix co_sonnet \
   --datasets qasper hotpotqa \
   --samples 200 \
   --modes full \
   --levels 1.0 \
-  --providers openai
+  --providers anthropic
 ```
 
 The runner is resumable — it skips samples already written to the output JSONL.
@@ -111,7 +99,7 @@ LongBench data is downloaded automatically on first run (~320 MB, cached under `
 ### 5. Evaluate
 
 ```bash
-uv run python eval_longbench.py --prefix co_v1_validate
+uv run python eval_longbench.py --prefix co_sonnet
 ```
 
 Pre-computed results are already in `results/` — you can run the evaluator without
@@ -123,7 +111,8 @@ re-running inference.
 - **Budget**: `int(orig_tokens × level)` tokens, computed with tiktoken `cl100k_base`.
 - **Skipped**: samples whose raw context exceeds 200,000 characters (service input limit).
   No input truncation is applied — samples either fit or are skipped.
-- **Downstream LLM**: GPT-4o (`temperature=0`, `max_tokens` per LongBench config).
+- **Downstream LLM**: Claude Sonnet 4.5 (`claude-sonnet-4-5-20250929`) via AWS Bedrock,
+  `temperature=0`, `max_tokens` per LongBench config.
 - **Metric**: token-level F1 from the official LongBench v1 evaluation code.
 - **`context_hint`** (biased mode): the question string, truncated to 2,000 characters.
 
@@ -139,24 +128,30 @@ longbench-v1/
 │   └── config/
 │       ├── dataset2prompt.json  # per-dataset prompt templates
 │       └── dataset2maxlen.json  # per-dataset max generation lengths
-└── results/                     # pre-computed predictions + API dumps
-    ├── co_v1_validate__openai__gpt-4o__full__L1_0/
-    ├── co_v1_validate__openai__gpt-4o__api_generic__L0_5/
-    ├── co_v1_validate__openai__gpt-4o__api_generic__L0_6/
-    ├── co_v1_validate__openai__gpt-4o__api_generic__L0_7/
-    ├── co_v1_validate__openai__gpt-4o__api_generic__L0_8/
-    ├── co_v1_validate__openai__gpt-4o__api_generic__L0_9/
-    ├── co_v1_validate__openai__gpt-4o__api_biased__L0_5/
-    ├── co_v1_validate__openai__gpt-4o__api_biased__L0_6/
-    ├── co_v1_validate__openai__gpt-4o__api_biased__L0_7/
-    ├── co_v1_validate__openai__gpt-4o__api_biased__L0_8/
-    └── co_v1_validate__openai__gpt-4o__api_biased__L0_9/
+└── results/                     # pre-computed predictions
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__full__L1_0/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_generic__L0_1/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_generic__L0_2/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_generic__L0_3/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_generic__L0_4/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_generic__L0_5/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_generic__L0_6/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_biased__L0_1/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_biased__L0_2/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_biased__L0_3/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_biased__L0_4/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_biased__L0_5/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__api_biased__L0_6/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__random__L0_1/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__random__L0_2/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__random__L0_3/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__random__L0_4/
+    ├── co_sonnet__bedrock__claude-sonnet-4-5-20250929__random__L0_5/
+    └── co_sonnet__bedrock__claude-sonnet-4-5-20250929__random__L0_6/
 ```
 
-Each results directory contains:
+Each results directory contains one file per dataset:
 - `{dataset}.jsonl` — predictions (compatible with the official LongBench evaluator)
-- `{dataset}.api_dump.jsonl` — per-sample API call details: input/output token counts,
-  selected chunks, context hint used
 
 ### Output schema: `{dataset}.jsonl`
 
@@ -164,31 +159,12 @@ Each results directory contains:
 |---|---|---|
 | `_id` | string | Sample ID from LongBench |
 | `dataset` | string | Sub-dataset name (e.g. `hotpotqa`) |
-| `mode` | string | `full`, `api_generic`, or `api_biased` |
+| `mode` | string | `full`, `api_generic`, `api_biased`, or `random` |
 | `level` | float | Compression target as fraction of original tokens (e.g. `0.5` = 50%) |
 | `pred` | string | LLM-generated answer |
 | `answers` | list[str] | Ground-truth answer(s); F1 = max over all |
 | `all_classes` | list[str] \| null | Classification labels (null for QA datasets) |
 | `length` | int | Original context length in **characters** (from LongBench metadata) |
-
-### Output schema: `{dataset}.api_dump.jsonl`
-
-| Field | Type | Description |
-|---|---|---|
-| `_id` | string | Sample ID from LongBench |
-| `dataset` | string | Sub-dataset name |
-| `mode` | string | Compression mode used |
-| `level` | float | Compression target fraction |
-| `provider` | string | LLM provider (`openai` or `anthropic`) |
-| `llm_model` | string | LLM model name (e.g. `gpt-4o`) |
-| `api_called` | bool | Whether the optimizer API was called (`false` for `full`) |
-| `api_version` | string | Optimizer API version (`v1`) |
-| `api_input_tokens` | int | Original context token count (tiktoken `cl100k_base`) |
-| `budget_tokens` | int | Target token budget: `floor(api_input_tokens × level)` |
-| `used_context_tokens` | int | Actual tokens in optimized context (may exceed budget due to chunk boundaries) |
-| `prompt_tokens` | int | Total tokens in the final prompt sent to the LLM (context + question + template) |
-| `context_hint` | string \| null | Question passed as hint (`api_biased` only; null otherwise) |
-| `selected_chunks` | list[str] | Text chunks selected by the v1 API (empty list for non-API modes) |
 
 ## Attribution
 

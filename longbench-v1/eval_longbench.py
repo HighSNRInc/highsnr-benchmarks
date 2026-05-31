@@ -115,6 +115,7 @@ def main() -> None:
     comp: dict[tuple[str, str], list[float]] = {}
     datasets_seen: set[str] = set()
     levels_seen: set[str] = set()
+    models_seen: set[str] = set()
 
     for run_dir in sorted(pred_root.iterdir()):
         if not run_dir.is_dir():
@@ -126,6 +127,8 @@ def main() -> None:
         info = parse_run_name(name)
         if info is None:
             continue
+
+        models_seen.add(info["model"])
 
         for ds_file in sorted(run_dir.glob("*.jsonl")):
             if "api_dump" in ds_file.name:
@@ -162,10 +165,12 @@ def main() -> None:
         return
 
     levels_sorted = sorted(levels_seen, key=lambda x: int(x))
+    model_label = ", ".join(sorted(models_seen)) if models_seen else "unknown"
     modes = [
         ("api_generic", "generic (no hint)"),
-        ("api_biased", "biased (with hint)"),
-        ("full", "full (no compression)"),
+        ("api_biased",  "biased (with hint)"),
+        ("random",      "random (baseline)"),
+        ("full",        "full (no compression)"),
     ]
 
     for ds in sorted(datasets_seen):
@@ -193,7 +198,7 @@ def main() -> None:
             f"{'-' * (col_w + 1)}:|" for _ in cols
         )
 
-        print(f"\n### {ds.upper()} — {metric_name}, GPT-4o, n={ds_sample_n}\n")
+        print(f"\n### {ds.upper()} — {metric_name}, {model_label}, n={ds_sample_n}\n")
         print(header)
         print(sep)
 
